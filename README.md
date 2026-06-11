@@ -247,7 +247,7 @@ Bir issue açın ya da PR gönderin. Yeni bir hedef eklerken flag'leri **yalnız
 
 ## 📄 Lisans
 
-[MIT](LICENSE) + eğitim/sorumluluk reddi. © 2026 ördek-lab.
+[MIT](LICENSE) + eğitim/sorumluluk reddi. © 2026 Eren Aloğlu.
 
 ---
 
