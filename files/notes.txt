@@ -1,0 +1,1 @@
+Genel notlar dosyasi (medium LFI bu dizinden okur).

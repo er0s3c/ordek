@@ -1,0 +1,43 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  username  String   @unique
+  password  String // Low: MD5 (zayif) -> sqlmap + rockyou + hashcat pratigi
+  role      String   @default("user")
+  avatarUrl String?
+  twofaCode String?
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
+model Product {
+  id    Int    @id @default(autoincrement())
+  name  String
+  price Float
+  stock Int    @default(100)
+}
+
+model Coupon {
+  id    Int    @id @default(autoincrement())
+  code  String @unique
+  used  Int    @default(0) // race condition pratigi
+  value Float
+}
+
+model Order {
+  id     Int    @id @default(autoincrement())
+  userId Int
+  item   String
+  total  Float
+  secret String // IDOR/BOLA ile sizdirilacak hassas alan
+  user   User   @relation(fields: [userId], references: [id])
+}

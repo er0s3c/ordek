@@ -1,0 +1,31 @@
+{
+  "name": "zafiyetli-makine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Egitim amacli kasitli zafiyetli web uygulamasi (Low/Medium/High)",
+  "scripts": {
+    "setup": "node setup.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "prisma:seed": "node prisma/seed.js",
+    "test:server": "node test/server.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "better-sqlite3": "^11.7.0",
+    "cookie": "^0.6.0",
+    "ejs": "^3.1.10",
+    "isomorphic-dompurify": "^2.16.0",
+    "jsonwebtoken": "^9.0.2",
+    "next": "14.2.5",
+    "node-serialize": "0.0.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "prisma": "^5.22.0"
+  }
+}

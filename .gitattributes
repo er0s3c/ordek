@@ -1,0 +1,11 @@
+# Tutarlı satır sonları (cross-platform). Shell scriptleri Linux'ta bozulmasın diye LF zorunlu.
+* text=auto eol=lf
+*.sh text eol=lf
+*.mjs text eol=lf
+
+# İkili dosyalar
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.db binary

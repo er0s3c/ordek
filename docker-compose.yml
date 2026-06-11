@@ -1,0 +1,42 @@
+# ördek // Vulnerable Lab — KONTROL PANELI (er0s3c tasarimi) + orchestrator.
+# Panel, docker.sock uzerinden her zafiyet+seviye icin AYRI hedef makine baslatir.
+# Hedef makineler ayni imajdan (ordek-lab:latest) calisir; deep-freeze (--rm + her start'ta reseed).
+# YALNIZCA izole/lokal ortamda calistirin. Internete ACMAYIN.
+
+services:
+  app:
+    build: .
+    image: ordek-lab:latest          # makine konteynerleri bu tag'i kullanir
+    ports:
+      - "3000:3000"                   # er0s3c kontrol paneli
+    environment:
+      - NODE_ENV=development
+      - LAB_ROLE=panel
+      - MACHINE_IMAGE=ordek-lab:latest
+      # setup.mjs .env'e yazar; compose otomatik okur. Yoksa varsayilan bireysel.
+      - LAB_MODE=${LAB_MODE:-individual}
+      - LAB_SESSION_SECRET=${LAB_SESSION_SECRET:-}
+    volumes:
+      # LAB-ONLY: panel'in hedef makineleri baslatabilmesi icin host docker'a erisim.
+      # (Windows Docker Desktop'ta bu yol calisir.)
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./uploads:/app/uploads
+      # Hesaplar/sinif/ilerleme/olaylar burada kalici tutulur (panel verisi).
+      - ./data:/app/data
+    networks: [public, internal]
+
+  # SSRF / komut hedefi olarak izole ic servisler (panel ile ayni ic agda)
+  internal-admin-panel:
+    build: ./internal/admin-panel
+    networks: [internal]
+    environment:
+      - FLAG=ordek{ssrf_internal_panel_pwned}
+
+  metadata-mock:
+    build: ./internal/metadata-mock
+    networks: [internal]
+
+networks:
+  public: {}
+  internal:
+    internal: true
