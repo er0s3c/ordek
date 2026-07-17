@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { MACHINES } from "@/lib/machines";
+import CopyButton from "./CopyButton";
 
 const LBL = { low: "Low", medium: "Medium", high: "High" };
 
@@ -15,7 +16,7 @@ function FlagSubmit({ slug, level, panelOrigin }) {
     try {
       const r = await fetch((panelOrigin || "") + "/api/flag", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug, level, flag: val.trim() }) });
       const d = await r.json();
-      setState(d.ok ? { ok: true } : { ok: false, msg: d.error || "Flag eşleşmedi." });
+      setState(d.ok ? { ok: true, flag: val.trim() } : { ok: false, msg: d.error || "Flag eşleşmedi." });
     } catch (e) { setState({ ok: false, msg: String(e.message || e) }); }
     setBusy(false);
   };
@@ -29,14 +30,17 @@ function FlagSubmit({ slug, level, panelOrigin }) {
           <button className="kbtn primary" onClick={submit} disabled={busy}>{busy ? "…" : "Doğrula"}</button>
         </div>
         {state && (state.ok
-          ? <div className="flag-banner"><span style={{ fontSize: 18 }}>⚑</span><div className="col" style={{ gap: 2 }}><span className="lbl">Doğru flag — çözüldü işaretlendi</span><span className="val">{LBL[level]}</span></div></div>
+          ? <>
+              <div className="flag-banner"><span style={{ fontSize: 18 }}>⚑</span><div className="col" style={{ gap: 2, flex: 1 }}><span className="lbl">Doğru flag — çözüldü işaretlendi</span><span className="val">{LBL[level]}</span></div><CopyButton value={state.flag} compact title="flag'i kopyala" /></div>
+              <div className="muted" style={{ fontSize: 12 }}>🎉 Tebrikler! Panelde bu makine açıksa (ve oto-kapanma açıksa) birazdan otomatik kapanacak.</div>
+            </>
           : <div className="console" style={{ color: "var(--red-bright)" }}>{state.msg}</div>)}
       </div>
     </div>
   );
 }
 
-export default function MachineTarget({ slug, level, panelOrigin = "http://localhost:3000" }) {
+export default function MachineTarget({ slug, level, panelOrigin = "" }) {
   const spec = MACHINES[slug] || { name: slug, endpoint: { method: "GET", path: "/", kind: "query", sample: "" } };
   const ep = spec.endpoint;
   const [val, setVal] = useState(ep.sample || "");

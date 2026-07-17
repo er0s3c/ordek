@@ -9,7 +9,12 @@
     "build": "next build",
     "start": "next start",
     "prisma:seed": "node prisma/seed.js",
-    "test:server": "node test/server.js"
+    "academy:images": "node scripts/gen-academy-images.mjs",
+    "test:server": "node test/server.js",
+    "test:units": "node test/units.mjs",
+    "test:class": "node test/classroom-units.mjs",
+    "test:ui": "node test/ui-regression.mjs",
+    "test": "node test/units.mjs && node test/classroom-units.mjs && node test/ui-regression.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

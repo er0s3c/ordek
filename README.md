@@ -115,6 +115,30 @@ Tek kişi, yerel kullanım. Panele tek kapıdan girilir (`admin / password`). Ke
 > ⚠️ Sınıf modu kasıtlı zafiyetli (RCE'ye kadar) hedefler barındıran paylaşımlı bir sunucudur —
 > **yalnızca izole sınıf/LAN ağında** çalıştırın.
 
+### 🐉 Gerçek araç labları + kendi Kali VM'in (otomatik ağ)
+
+Araç labları (Nmap, Hydra, Metasploit, SQLMap…) gerçek araç ikililerini **senin kendi Kali Linux
+makinende** (VirtualBox / VMware VM) çalıştırmanı ister. ördek bunun için **bridge (BYO-VM)** modunu
+varsayılan kullanır:
+
+* "▸ Hedefi Başlat" deyince panel izole hedefi başlatır ve **servis portlarını host'a otomatik
+  yayımlar** — sen hiçbir ağ ayarı / macvlan / IP girmezsin.
+* Panel sana her servisin host portunu (ör. `http → :46335`), bir bağlantı topolojisini
+  (Kali VM → Windows Host → hedef) ve hazır örnek komutları gösterir.
+* Kali VM'inden **Windows host IP'sine** bağlanırsın:
+
+  | VM ağ modu | Windows host adresi |
+  |---|---|
+  | VirtualBox · NAT (varsayılan) | `10.0.2.2` |
+  | VirtualBox · Host-Only | `192.168.56.1` |
+  | VMware · NAT | `192.168.x.2` |
+  | Bridged (her ikisi) | host'un LAN IP'si (`ipconfig`) |
+
+Windows'ta `80/443/445/53` gibi sistem portları doluysa o hedef otomatik **dinamik bir host
+portuna** düşer (panel gerçek portu gösterir). Mod, `LAB_ATTACKER_MODE` ile değiştirilir:
+`bridge` (varsayılan) · `macvlan` (gerçek Linux LAN; `LAB_LAN_*` boşsa bridge'e düşer) ·
+`test` (gömülü Kali kutusu — yalnız proje testleri).
+
 ---
 
 ## 📚 Akademi — "Günlük hayatta nerede karşılaşırsın?"
@@ -247,7 +271,7 @@ Bir issue açın ya da PR gönderin. Yeni bir hedef eklerken flag'leri **yalnız
 
 ## 📄 Lisans
 
-[MIT](LICENSE) + eğitim/sorumluluk reddi. © 2026 Eren Aloğlu.
+[MIT](LICENSE) + eğitim/sorumluluk reddi. © 2026 ördek-lab.
 
 ---
 

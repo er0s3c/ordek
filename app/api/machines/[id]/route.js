@@ -1,6 +1,7 @@
 // Makine aksiyonu: durdur / yeniden başlat (deep-freeze).
 // Sınıf modunda öğrenci oturumu varsa olaylar aktivite günlüğüne yazılır.
-import { stopMachine, restartMachine, MACHINE_SLUGS, LEVELS } from "@/lib/docker";
+import { stopMachine, restartMachine, restartToolLab, MACHINE_SLUGS, LEVELS } from "@/lib/docker";
+import { isToolLab } from "@/lib/toolLabs";
 import { getSession } from "@/lib/session";
 import { getUserById } from "@/lib/accounts";
 import { logEvent } from "@/lib/events";
@@ -30,7 +31,13 @@ export async function POST(req, { params }) {
       return Response.json(r);
     }
     if (action === "restart") {
-      const slug = body.slug, level = body.level;
+      const slug = body.slug;
+      if (isToolLab(slug)) {
+        const r = await restartToolLab({ id, slug, studentId, studentName });
+        if (studentId) logEvent({ userId: studentId, type: "machine_restart", slug, level: "lab" });
+        return Response.json(r);
+      }
+      const level = body.level;
       if (!MACHINE_SLUGS.includes(slug) || !LEVELS.includes(level)) return Response.json({ error: "slug/level gerekli" }, { status: 400 });
       const r = await restartMachine({ id, slug, level, studentId, studentName });
       if (studentId) logEvent({ userId: studentId, type: "machine_restart", slug, level });

@@ -1,6 +1,7 @@
 // Sınıf yönetimi — listele / oluştur / yeniden adlandır / arşivle / kod yenile / sil.
 import { getSession } from "@/lib/session";
 import { listClasses, getClassById, createClass, updateClass, deleteClass, studentsOfClass } from "@/lib/accounts";
+import { pruneClassData } from "@/lib/classroom";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,10 @@ export async function POST(req) {
   const action = body.action;
 
   if (action === "create") {
-    const cls = createClass({ name: body.name, teacherId: sess.userId });
-    return Response.json({ ok: true, class: cls });
+    try {
+      const cls = createClass({ name: body.name, teacherId: sess.userId, code: body.code });
+      return Response.json({ ok: true, class: cls });
+    } catch (e) { return Response.json({ ok: false, error: String(e.message || e) }, { status: 400 }); }
   }
 
   // mutasyonlar için: sınıf bu öğretmene mi ait?
@@ -35,7 +38,13 @@ export async function POST(req) {
   if (action === "rename") return Response.json({ ok: true, class: updateClass(cls.id, { name: body.name }) });
   if (action === "archive") return Response.json({ ok: true, class: updateClass(cls.id, { archived: !!body.archived }) });
   if (action === "regenerate") return Response.json({ ok: true, class: updateClass(cls.id, { regenerateCode: true }) });
-  if (action === "delete") { deleteClass(cls.id); return Response.json({ ok: true, deleted: cls.id }); }
+  if (action === "delete") {
+    // Önce öğrenci id'lerini topla (deleteClass classId'lerini boşaltacak), sonra classroom yetim verisini buda.
+    const studentIds = studentsOfClass(cls.id).map((s) => s.id);
+    deleteClass(cls.id);
+    pruneClassData(cls.id, studentIds);
+    return Response.json({ ok: true, deleted: cls.id });
+  }
 
   return Response.json({ ok: false, error: "bilinmeyen aksiyon" }, { status: 400 });
 }

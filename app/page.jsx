@@ -5,7 +5,7 @@ import MachineTarget from "./MachineTarget";
 export default function Page() {
   const slug = process.env.LAB_MACHINE;
   const level = process.env.LAB_FORCE_LEVEL || "low";
-  const panelOrigin = process.env.PANEL_ORIGIN || "http://localhost:3000";
+  const panelOrigin = process.env.PANEL_ORIGIN || "";
   if (slug) return <MachineTarget slug={slug} level={level} panelOrigin={panelOrigin} />;
   return <LabApp />;
 }

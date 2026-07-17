@@ -1,6 +1,8 @@
-# ördek // Vulnerable Lab — KONTROL PANELI (er0s3c tasarimi) + orchestrator.
+# ördek // Vulnerable Lab — KONTROL PANELI (er0s3c tasarimi) + orchestrator + hedef proxy.
 # Panel, docker.sock uzerinden her zafiyet+seviye icin AYRI hedef makine baslatir.
 # Hedef makineler ayni imajdan (ordek-lab:latest) calisir; deep-freeze (--rm + her start'ta reseed).
+# Hedefler HOST'a port YAYINLAMAZ: yalniz ic agda (ordek_internal) ad ile erisilir ve
+# kimlik-dogrulamali proxy (:3001) uzerinden acilir → ogrenciler birbirinin makinesine giremez.
 # YALNIZCA izole/lokal ortamda calistirin. Internete ACMAYIN.
 
 services:
@@ -13,6 +15,47 @@ services:
       - NODE_ENV=development
       - LAB_ROLE=panel
       - MACHINE_IMAGE=ordek-lab:latest
+      # Hedefler bu ic aga (egress yok) baglanir; ad ile proxy'lenir.
+      - LAB_TARGET_NETWORK=ordek_internal
+      - PROXY_PUBLIC_PORT=3001
+      # --- Yogunluk / kaynak tavanlari (60 ogrenci / 16GB icin ayarla) ---
+      - MAX_MACHINES_PER_STUDENT=${MAX_MACHINES_PER_STUDENT:-1}
+      - MAX_MACHINES_TOTAL=${MAX_MACHINES_TOTAL:-70}
+      - MACHINE_MEM=${MACHINE_MEM:-512m}
+      - MACHINE_CPUS=${MACHINE_CPUS:-0.75}
+      - MACHINE_PIDS=${MACHINE_PIDS:-256}
+      - MACHINE_IDLE_MINUTES=${MACHINE_IDLE_MINUTES:-20}
+      - MACHINE_READONLY=${MACHINE_READONLY:-0}
+      # --- Gerçek araç labları — DAĞITIM MODU (otomatik · Windows + VM dostu) ---
+      #  vpn (VARSAYILAN, TryHackMe-tarzı): WireGuard sunucusu (ordek-wg) tüneliyle öğrenci
+      #       KENDİ Kali VM'inden BİR KEZ bağlanır → hedeflere gerçek IP'leriyle (ordek_vpn,
+      #       10.13.37.0/24) erişir. `nmap -p- <ip>` tam çalışır. WG kurulamazsa → bridge'e düşer.
+      #  bridge (BYO-VM): hedef servis portları HOST'a yayımlanır; öğrenci host IP:port'a bağlanır.
+      #  macvlan (gerçek Linux host + fiziksel LAN): gerçek LAN IP'leri. LAB_LAN_* boşsa → bridge.
+      #  test (GELİŞTİRİCİ): gömülü Kali saldırgan kutusu + ttyd/noVNC (yalnız proje testleri).
+      - LAB_ATTACKER_MODE=${LAB_ATTACKER_MODE:-vpn}
+      # vpn (WireGuard): ordek-wg imajı + tünel/lab subnet'leri + host'a yayımlanan UDP portu.
+      - WG_IMAGE=ordek-wg:latest
+      - LAB_VPN_PORT=${LAB_VPN_PORT:-51820}
+      - LAB_VPN_ENDPOINT=${LAB_VPN_ENDPOINT:-10.0.2.2}
+      - LAB_VPN_LAB_SUBNET=${LAB_VPN_LAB_SUBNET:-10.13.37.0/24}
+      - LAB_VPN_TUN_SUBNET=${LAB_VPN_TUN_SUBNET:-10.13.38.0/24}
+      # bridge: yayımlanan portlar bu IP'ye bağlanır (VM erişebilsin diye 0.0.0.0).
+      - LAB_BRIDGE_BIND=${LAB_BRIDGE_BIND:-0.0.0.0}
+      # bridge: sabit standart portları (80/22/445…) dene; doluysa otomatik dinamiğe düş.
+      - LAB_BRIDGE_FIXED_PORTS=${LAB_BRIDGE_FIXED_PORTS:-1}
+      # macvlan modu (yalnız LAB_ATTACKER_MODE=macvlan): fiziksel Linux LAN'ına göre doldur.
+      - LAB_LAN_NETWORK=${LAB_LAN_NETWORK:-ordek_lan}
+      - LAB_LAN_SUBNET=${LAB_LAN_SUBNET:-}
+      - LAB_LAN_GATEWAY=${LAB_LAN_GATEWAY:-}
+      - LAB_LAN_PARENT=${LAB_LAN_PARENT:-}
+      - LAB_LAN_IPRANGE=${LAB_LAN_IPRANGE:-}
+      # Hedef kaynak tavanı (50 öğrenci ≈ hedef başına ~200MB). MAX'ı host RAM'ine göre ayarla.
+      - TOOL_TARGET_MEM=${TOOL_TARGET_MEM:-256m}
+      # (Yalnız LAB_ATTACKER_MODE=test'te kullanılır — üretimde gereksiz)
+      - ATTACKER_IMAGE=ordek-attacker:latest
+      - ATTACKER_MEM=${ATTACKER_MEM:-1536m}
+      - ATTACKER_CPUS=${ATTACKER_CPUS:-1.0}
       # setup.mjs .env'e yazar; compose otomatik okur. Yoksa varsayilan bireysel.
       - LAB_MODE=${LAB_MODE:-individual}
       - LAB_SESSION_SECRET=${LAB_SESSION_SECRET:-}
@@ -25,7 +68,21 @@ services:
       - ./data:/app/data
     networks: [public, internal]
 
-  # SSRF / komut hedefi olarak izole ic servisler (panel ile ayni ic agda)
+  # Kimlik-dogrulamali HEDEF proxy (ayri kapi). docker.sock'u YOKTUR; yalniz ag uzerinden konusur.
+  proxy:
+    image: ordek-lab:latest
+    # İmajın ENTRYPOINT'ini (panel/makine) geçersiz kıl → yalnız proxy sunucusu.
+    entrypoint: ["node", "proxy/server.mjs"]
+    ports:
+      - "3001:3001"
+    environment:
+      - PROXY_PORT=3001
+      - PANEL_INTERNAL=http://app:3000
+      - LAB_SESSION_SECRET=${LAB_SESSION_SECRET:-}
+    depends_on: [app]
+    networks: [public, internal]
+
+  # SSRF / komut hedefi olarak izole ic servisler (panel + hedefler ile ayni ic agda)
   internal-admin-panel:
     build: ./internal/admin-panel
     networks: [internal]
@@ -36,7 +93,56 @@ services:
     build: ./internal/metadata-mock
     networks: [internal]
 
+  # ── Gerçek-araç labı imajları (yalnız BUILD; çalışmazlar — docker.js oturum başına başlatır) ──
+  # Hepsini derle:  docker compose --profile build build
+  # ⚠ YALNIZ TEST/GELİŞTİRME: gömülü Kali saldırgan kutusu (8.5GB). Üretimde GEREKMEZ
+  #    (öğrenciler kendi Kali'leriyle saldırır). Proje bitince: docker rmi ordek-attacker.
+  attacker-image:
+    build: ./docker/attacker
+    image: ordek-attacker:latest
+    profiles: ["build", "test"]
+  target-web:
+    build: ./docker/targets/web
+    image: ordek-target-web:latest
+    profiles: ["build"]
+  target-victim:
+    build: ./docker/targets/victim-bot
+    image: ordek-victim-bot:latest
+    profiles: ["build"]
+  target-cve:
+    build: ./docker/targets/cve
+    image: ordek-target-cve:latest
+    profiles: ["build"]
+  target-smb:
+    build: ./docker/targets/smb
+    image: ordek-target-smb:latest
+    profiles: ["build"]
+  target-dns:
+    build: ./docker/targets/dns
+    image: ordek-target-dns:latest
+    profiles: ["build"]
+  target-wp:
+    build: ./docker/targets/wp
+    image: ordek-target-wp:latest
+    profiles: ["build"]
+  target-linux:
+    build: ./docker/targets/linux
+    image: ordek-target-linux:latest
+    profiles: ["build"]
+  target-tls:
+    build: ./docker/targets/tls
+    image: ordek-target-tls:latest
+    profiles: ["build"]
+  # WireGuard erişim sunucusu (VARSAYILAN vpn modu). Panel docker.sock üzerinden
+  #  ordek-wg konteynerini başlatır; bu yalnızca İMAJI derler (çalıştırmaz).
+  wireguard:
+    build: ./docker/wireguard
+    image: ordek-wg:latest
+    profiles: ["build"]
+
 networks:
-  public: {}
+  public:
+    name: ordek_public
   internal:
+    name: ordek_internal
     internal: true

