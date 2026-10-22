@@ -1,7 +1,7 @@
 # Test Sonuçları — Canlı Exploit Doğrulaması
 
 **Ortam:** `docker compose up --build` ile çalışan GERÇEK stack.
-Uygulama = `app` konteyneri (Next.js 14, `node:20-bullseye`, Linux), API rotaları
+Uygulama = `app` konteyneri (Next.js 14, `node:20-bookworm`, Linux), API rotaları
 `lib/vulns.js` mantığını çalıştırır. İç hedefler izole `internal` ağında:
 `internal-admin-panel`, `metadata-mock`.
 

@@ -1,7 +1,7 @@
 # Docker CLI'yi resmi imajdan al (panel rolu makine baslatmak icin kullanir)
 FROM docker:27-cli AS dockercli
 
-FROM node:20-bullseye
+FROM node:20-bookworm
 WORKDIR /app
 
 # ping (command-injection makinesi gercek cikti versin) + docker client binarisi
